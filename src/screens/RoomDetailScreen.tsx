@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -18,6 +17,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+
 import { db } from "../firebase/config";
 import {
   getBookingsForRoomAndDate,
@@ -25,6 +25,7 @@ import {
 } from "../services/bookingService";
 import { rooms } from "../data/rooms";
 import { Room } from "../types";
+
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/AppNavigator";
 
@@ -32,6 +33,10 @@ type Props = NativeStackScreenProps<
   RootStackParamList,
   "RoomDetail"
 >;
+
+/* =========================
+   TIME SLOTS
+   ========================= */
 
 const timeSlots = [
   {
@@ -65,6 +70,10 @@ const timeSlots = [
     endTime: "16:00",
   },
 ];
+
+/* =========================
+   DATE HELPERS
+   ========================= */
 
 const formatDate = (date: Date) => {
   const year = date.getFullYear();
@@ -101,6 +110,10 @@ const formatDisplayDate = (dateString: string) => {
   return `${day}/${month}/${year}`;
 };
 
+/* =========================
+   SCREEN
+   ========================= */
+
 export default function RoomDetailScreen({
   route,
   navigation,
@@ -121,9 +134,10 @@ export default function RoomDetailScreen({
   const [showConfirmModal, setShowConfirmModal] =
     useState(false);
 
-  /*
-   * Danh sách 7 ngày tiếp theo
-   */
+  /* =========================
+     7 NGÀY TIẾP THEO
+     ========================= */
+
   const dates = Array.from(
     { length: 7 },
     (_, index) => {
@@ -137,11 +151,9 @@ export default function RoomDetailScreen({
     }
   );
 
-  /*
-   * ==============================
-   * ROOM QUERY
-   * ==============================
-   */
+  /* =========================
+     ROOM QUERY
+     ========================= */
 
   const {
     data: room = null,
@@ -199,19 +211,9 @@ export default function RoomDetailScreen({
     staleTime: 1000 * 60 * 5,
   });
 
-  /*
-   * ==============================
-   * BOOKING QUERY
-   * ==============================
-   *
-   * Query key:
-   * roomId + selectedDate
-   *
-   * Ví dụ:
-   * ["roomBookings", "room-1", "2026-09-28"]
-   *
-   * Mỗi phòng/ngày sẽ có dữ liệu riêng.
-   */
+  /* =========================
+     BOOKING QUERY
+     ========================= */
 
   const {
     data: bookings = [],
@@ -233,25 +235,12 @@ export default function RoomDetailScreen({
       !!roomId &&
       !!selectedDate,
 
-    /*
-     * Booking cần dữ liệu mới.
-     */
     staleTime: 0,
   });
 
-  /*
-   * Chuyển danh sách booking thành
-   * danh sách slot đã được đặt.
-   *
-   * Ví dụ:
-   *
-   * booking:
-   * startTime = "14:00"
-   * endTime   = "15:00"
-   *
-   * =>
-   * "14:00-15:00"
-   */
+  /* =========================
+     SLOT ĐÃ ĐẶT
+     ========================= */
 
   const bookedSlots = bookings.map(
     (item: any) =>
@@ -272,11 +261,9 @@ export default function RoomDetailScreen({
     }
   }, [bookedSlots, selectedSlot]);
 
-  /*
-   * ==============================
-   * CHỌN NGÀY
-   * ==============================
-   */
+  /* =========================
+     CHỌN NGÀY
+     ========================= */
 
   const handleSelectDate = (
     date: string
@@ -285,11 +272,9 @@ export default function RoomDetailScreen({
     setSelectedSlot(null);
   };
 
-  /*
-   * ==============================
-   * CHỌN / ĐẶT PHÒNG
-   * ==============================
-   */
+  /* =========================
+     BẮT ĐẦU BOOKING
+     ========================= */
 
   const handleBooking = () => {
     if (!selectedSlot) {
@@ -306,16 +291,11 @@ export default function RoomDetailScreen({
     }
 
     /*
-     * Kiểm tra nhanh ở phía UI.
-     *
-     * Nếu slot đã có trong Firestore
-     * thì không cho tiếp tục.
+     * Kiểm tra nhanh ở UI.
      */
 
     if (
-      bookedSlots.includes(
-        selectedSlot
-      )
+      bookedSlots.includes(selectedSlot)
     ) {
       Alert.alert(
         "Khung giờ đã được đặt",
@@ -328,11 +308,9 @@ export default function RoomDetailScreen({
     setShowConfirmModal(true);
   };
 
-  /*
-   * ==============================
-   * XÁC NHẬN BOOKING
-   * ==============================
-   */
+  /* =========================
+     XÁC NHẬN BOOKING
+     ========================= */
 
   const confirmBooking = async () => {
     if (!selectedSlot) {
@@ -354,14 +332,11 @@ export default function RoomDetailScreen({
     }
 
     /*
-     * Kiểm tra lại một lần nữa trước
-     * khi ghi dữ liệu.
+     * Kiểm tra lại trước khi ghi.
      */
 
     if (
-      bookedSlots.includes(
-        selectedSlot
-      )
+      bookedSlots.includes(selectedSlot)
     ) {
       setShowConfirmModal(false);
 
@@ -391,9 +366,9 @@ export default function RoomDetailScreen({
         return;
       }
 
-      /*
-       * Lấy tên người dùng
-       */
+      /* =========================
+         LẤY THÔNG TIN USER
+         ========================= */
 
       const userRef = doc(
         db,
@@ -415,13 +390,9 @@ export default function RoomDetailScreen({
         user.email ||
         "Người dùng";
 
-      /*
-       * Tạo booking.
-       *
-       * createBooking() sử dụng
-       * Firestore transaction để chống
-       * hai người đặt cùng một slot.
-       */
+      /* =========================
+         TẠO BOOKING
+         ========================= */
 
       await createBooking({
         roomId,
@@ -434,25 +405,16 @@ export default function RoomDetailScreen({
           selectedTime.endTime,
       });
 
-      /*
-       * Đóng modal
-       */
-      setShowConfirmModal(false);
+      /* =========================
+         RESET UI
+         ========================= */
 
-      /*
-       * Bỏ slot đang chọn
-       */
+      setShowConfirmModal(false);
       setSelectedSlot(null);
 
-      /*
-       * QUAN TRỌNG:
-       *
-       * Sau khi đặt thành công,
-       * invalidate query booking của phòng.
-       *
-       * TanStack Query sẽ lấy lại dữ liệu
-       * booking mới từ Firestore.
-       */
+      /* =========================
+         REFRESH ROOM BOOKINGS
+         ========================= */
 
       await queryClient.invalidateQueries({
         queryKey: [
@@ -462,10 +424,9 @@ export default function RoomDetailScreen({
         ],
       });
 
-      /*
-       * Đồng bộ MyBookings nếu đang dùng
-       * cùng QueryClient.
-       */
+      /* =========================
+         REFRESH MY BOOKINGS
+         ========================= */
 
       await queryClient.invalidateQueries({
         queryKey: [
@@ -473,6 +434,10 @@ export default function RoomDetailScreen({
           user.uid,
         ],
       });
+
+      /* =========================
+         SUCCESS
+         ========================= */
 
       Alert.alert(
         "Đặt phòng thành công",
@@ -506,8 +471,7 @@ export default function RoomDetailScreen({
       );
 
       /*
-       * Trường hợp người khác đã đặt
-       * slot trước mình.
+       * Người khác vừa đặt slot.
        */
 
       if (
@@ -520,10 +484,6 @@ export default function RoomDetailScreen({
           "Khung giờ vừa được đặt",
           "Một người khác đã đặt khung giờ này trước bạn. Vui lòng chọn khung giờ khác."
         );
-
-        /*
-         * Lấy lại booking mới nhất.
-         */
 
         await queryClient.invalidateQueries({
           queryKey: [
@@ -547,11 +507,9 @@ export default function RoomDetailScreen({
     }
   };
 
-  /*
-   * ==============================
-   * LOADING
-   * ==============================
-   */
+  /* =========================
+     LOADING
+     ========================= */
 
   if (loading) {
     return (
@@ -580,11 +538,9 @@ export default function RoomDetailScreen({
     );
   }
 
-  /*
-   * ==============================
-   * KHÔNG TÌM THẤY PHÒNG
-   * ==============================
-   */
+  /* =========================
+     KHÔNG TÌM THẤY PHÒNG
+     ========================= */
 
   if (!room) {
     return (
@@ -621,17 +577,19 @@ export default function RoomDetailScreen({
     );
   }
 
+  /* =========================
+     SELECTED TIME
+     ========================= */
+
   const selectedTime =
     timeSlots.find(
       (slot) =>
         slot.id === selectedSlot
     );
 
-  /*
-   * ==============================
-   * UI
-   * ==============================
-   */
+  /* =========================
+     UI
+     ========================= */
 
   return (
     <SafeAreaView
@@ -675,12 +633,8 @@ export default function RoomDetailScreen({
             ROOM INFO
             ========================= */}
 
-        <View
-          style={styles.infoCard}
-        >
-          <View
-            style={styles.titleRow}
-          >
+        <View style={styles.infoCard}>
+          <View style={styles.titleRow}>
             <View
               style={
                 styles.titleContainer
@@ -696,31 +650,6 @@ export default function RoomDetailScreen({
                 style={styles.building}
               >
                 Tòa {room.building}
-              </Text>
-            </View>
-
-            <View
-              style={[
-                styles.statusBadge,
-                room.status ===
-                "available"
-                  ? styles.availableBadge
-                  : styles.occupiedBadge,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.statusText,
-                  room.status ===
-                  "available"
-                    ? styles.availableText
-                    : styles.occupiedText,
-                ]}
-              >
-                {room.status ===
-                "available"
-                  ? "Có sẵn"
-                  : "Đang sử dụng"}
               </Text>
             </View>
           </View>
@@ -783,9 +712,7 @@ export default function RoomDetailScreen({
             DATE
             ========================= */}
 
-        <View
-          style={styles.section}
-        >
+        <View style={styles.section}>
           <Text
             style={styles.sectionTitle}
           >
@@ -815,7 +742,7 @@ export default function RoomDetailScreen({
                   style={[
                     styles.dateCard,
                     selected &&
-                    styles.selectedDateCard,
+                      styles.selectedDateCard,
                   ]}
                   onPress={() =>
                     handleSelectDate(
@@ -828,7 +755,7 @@ export default function RoomDetailScreen({
                     style={[
                       styles.dayName,
                       selected &&
-                      styles.selectedDateText,
+                        styles.selectedDateText,
                     ]}
                   >
                     {getDayName(date)}
@@ -838,7 +765,7 @@ export default function RoomDetailScreen({
                     style={[
                       styles.dayNumber,
                       selected &&
-                      styles.selectedDateText,
+                        styles.selectedDateText,
                     ]}
                   >
                     {date.getDate()}
@@ -848,7 +775,7 @@ export default function RoomDetailScreen({
                     style={[
                       styles.monthText,
                       selected &&
-                      styles.selectedDateText,
+                        styles.selectedDateText,
                     ]}
                   >
                     Th{date.getMonth() + 1}
@@ -863,9 +790,7 @@ export default function RoomDetailScreen({
             TIME SLOTS
             ========================= */}
 
-        <View
-          style={styles.section}
-        >
+        <View style={styles.section}>
           <View
             style={styles.timeHeader}
           >
@@ -888,17 +813,18 @@ export default function RoomDetailScreen({
           >
             {timeSlots.map((slot) => {
               /*
-               * Kiểm tra slot đã được đặt chưa
+               * Slot đã được đặt
                */
+
               const booked =
                 bookedSlots.includes(
                   slot.id
                 );
 
               /*
-               * Kiểm tra slot đang được
-               * người dùng hiện tại chọn
+               * Slot đang chọn
                */
+
               const selected =
                 selectedSlot ===
                 slot.id;
@@ -906,32 +832,15 @@ export default function RoomDetailScreen({
               return (
                 <TouchableOpacity
                   key={slot.id}
-
-                  /*
-                   * SLOT ĐÃ ĐẶT:
-                   * disabled = true
-                   *
-                   * => Không thể bấm
-                   */
                   disabled={
                     booked ||
                     loadingSlots ||
                     booking
                   }
-
-                  /*
-                   * Không cho feedback opacity
-                   * khi slot đã bị khóa.
-                   */
                   activeOpacity={
                     booked ? 1 : 0.8
                   }
-
                   onPress={() => {
-                    /*
-                     * Double-check:
-                     * nếu đã đặt thì không làm gì.
-                     */
                     if (booked) {
                       return;
                     }
@@ -940,20 +849,13 @@ export default function RoomDetailScreen({
                       slot.id
                     );
                   }}
-
                   style={[
                     styles.timeCard,
 
-                    /*
-                     * Slot đang chọn
-                     */
                     selected &&
                       !booked &&
                       styles.selectedTimeCard,
 
-                    /*
-                     * SLOT ĐÃ ĐẶT
-                     */
                     booked &&
                       styles.bookedTimeCard,
                   ]}
@@ -1100,7 +1002,9 @@ export default function RoomDetailScreen({
         animationType="fade"
         onRequestClose={() => {
           if (!booking) {
-            setShowConfirmModal(false);
+            setShowConfirmModal(
+              false
+            );
           }
         }}
       >
@@ -1344,6 +1248,10 @@ export default function RoomDetailScreen({
   );
 }
 
+/* =========================
+   STYLES
+   ========================= */
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1431,33 +1339,6 @@ const styles = StyleSheet.create({
     marginTop: 5,
     fontSize: 14,
     color: "#64748B",
-  },
-
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 999,
-  },
-
-  availableBadge: {
-    backgroundColor: "#DCFCE7",
-  },
-
-  occupiedBadge: {
-    backgroundColor: "#FEE2E2",
-  },
-
-  statusText: {
-    fontSize: 12,
-    fontWeight: "700",
-  },
-
-  availableText: {
-    color: "#15803D",
-  },
-
-  occupiedText: {
-    color: "#B91C1C",
   },
 
   capacityRow: {
@@ -1579,21 +1460,10 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
 
-  /*
-   * SLOT ĐANG CHỌN
-   */
-
   selectedTimeCard: {
     backgroundColor: "#2563EB",
     borderColor: "#2563EB",
   },
-
-  /*
-   * SLOT ĐÃ ĐẶT
-   *
-   * Màu xám để người dùng nhận biết
-   * ngay là không thể sử dụng.
-   */
 
   bookedTimeCard: {
     backgroundColor: "#E5E7EB",
@@ -1617,17 +1487,9 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
   },
 
-  /*
-   * Chữ của slot đã đặt
-   */
-
   bookedTimeText: {
     color: "#9CA3AF",
   },
-
-  /*
-   * Badge "Đã đặt"
-   */
 
   bookedBadge: {
     position: "absolute",

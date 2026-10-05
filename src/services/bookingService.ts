@@ -19,10 +19,21 @@ export type CreateBookingInput = {
   endTime: string;
 };
 
+export type RoomBooking = {
+  id: string;
+  roomId: string;
+  userId: string;
+  userName: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  status: "confirmed" | "cancelled";
+};
+
 export const getBookingsForRoomAndDate = async (
   roomId: string,
   date: string
-) => {
+): Promise<RoomBooking[]> => {
   const bookingsQuery = query(
     collection(db, "bookings"),
     where("roomId", "==", roomId),
@@ -35,7 +46,7 @@ export const getBookingsForRoomAndDate = async (
   return snapshot.docs.map((document) => ({
     id: document.id,
     ...document.data(),
-  }));
+  })) as RoomBooking[];
 };
 
 

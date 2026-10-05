@@ -3,56 +3,90 @@ import { Room } from "../types";
 export const rooms: Room[] = [
   {
     id: "room-1",
-    name: "Lab A3-101",
+    name: "Phòng A3.101",
     building: "A3",
     capacity: 40,
-    status: "available",
-    image: "https://images.unsplash.com/photo-1562774053-701939374585",
-    facilities: ["Computer", "Projector", "Air Conditioner"],
+    image:
+      "https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1200&q=80",
+    facilities: [
+      "Máy chiếu",
+      "Điều hòa",
+      "Wi-Fi",
+      "Bảng trắng",
+    ],
   },
+
   {
     id: "room-2",
-    name: "Lab A3-102",
+    name: "Phòng A3.102",
     building: "A3",
     capacity: 35,
-    status: "available",
-    image: "https://images.unsplash.com/photo-1497366754035-f200968a6e72",
-    facilities: ["Computer", "Projector"],
+    image:
+      "https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1200&q=80",
+    facilities: [
+      "Máy chiếu",
+      "Điều hòa",
+      "Wi-Fi",
+      "Bảng trắng",
+    ],
   },
+
   {
     id: "room-3",
-    name: "Lab A3-201",
-    building: "A3",
+    name: "Phòng B1.201",
+    building: "B1",
     capacity: 50,
-    status: "occupied",
-    image: "https://images.unsplash.com/photo-1497366811353-6870744d04b2",
-    facilities: ["Computer", "Projector", "Air Conditioner"],
+    image:
+      "https://images.unsplash.com/photo-1497366811353-6870744d04b2?auto=format&fit=crop&w=1200&q=80",
+    facilities: [
+      "Máy chiếu",
+      "Điều hòa",
+      "Wi-Fi",
+      "Âm thanh",
+    ],
   },
+
   {
     id: "room-4",
-    name: "Study Room B1-101",
+    name: "Phòng B1.202",
     building: "B1",
     capacity: 12,
-    status: "available",
-    image: "https://images.unsplash.com/photo-1524758631624-e2822e304c36",
-    facilities: ["Table", "Whiteboard", "Air Conditioner"],
+    image:
+      "https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1200&q=80",
+    facilities: [
+      "TV",
+      "Điều hòa",
+      "Wi-Fi",
+      "Bảng trắng",
+    ],
   },
+
   {
     id: "room-5",
-    name: "Study Room B1-102",
-    building: "B1",
+    name: "Phòng Thư viện 01",
+    building: "Thư viện",
     capacity: 8,
-    status: "occupied",
-    image: "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4",
-    facilities: ["Table", "Whiteboard"],
+    image:
+      "https://images.unsplash.com/photo-1521587760476-6c12a4b040da?auto=format&fit=crop&w=1200&q=80",
+    facilities: [
+      "Wi-Fi",
+      "Ổ cắm điện",
+      "Bàn học",
+    ],
   },
+
   {
     id: "room-6",
-    name: "Library Zone A",
-    building: "Library",
+    name: "Phòng Thư viện 02",
+    building: "Thư viện",
     capacity: 20,
-    status: "available",
-    image: "https://images.unsplash.com/photo-1521587760476-6c12a4b040da",
-    facilities: ["Table", "Power Outlet", "Wi-Fi"],
+    image:
+      "https://images.unsplash.com/photo-1568667256549-094345857637?auto=format&fit=crop&w=1200&q=80",
+    facilities: [
+      "Wi-Fi",
+      "Điều hòa",
+      "Ổ cắm điện",
+      "Bảng trắng",
+    ],
   },
 ];

@@ -1,4 +1,4 @@
-export type RoomStatus = "available" | "occupied";
+
 
 export type Room = {
   id: string;
@@ -6,7 +6,6 @@ export type Room = {
   building: string;
   capacity: number;
   image?: string;
-  status: RoomStatus;
   facilities: string[];
 };
 

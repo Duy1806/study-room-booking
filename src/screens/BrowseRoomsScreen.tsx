@@ -1,4 +1,3 @@
-
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -15,10 +14,47 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { getRooms } from "../services/roomService";
+import { getBookingsForRoomAndDate } from "../services/bookingService";
 import { Room } from "../types";
 
 type StatusFilter = "all" | "available" | "occupied";
+type RoomStatus = "available" | "occupied";
 type CapacityFilter = "all" | "small" | "medium" | "large";
+
+/**
+ * Room dùng để hiển thị trên màn hình.
+ *
+ * status được tính từ booking hiện tại,
+ * không lấy từ Firestore rooms.
+ */
+type RoomWithStatus = Omit<Room, "status"> & {
+  status: RoomStatus;
+};
+
+/**
+ * Lấy ngày hiện tại theo dạng YYYY-MM-DD
+ */
+const getCurrentDate = () => {
+  const now = new Date();
+
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+};
+
+/**
+ * Lấy giờ hiện tại theo dạng HH:mm
+ */
+const getCurrentTime = () => {
+  const now = new Date();
+
+  const hours = String(now.getHours()).padStart(2, "0");
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+
+  return `${hours}:${minutes}`;
+};
 
 export default function BrowseRoomsScreen({ navigation }: any) {
   const [search, setSearch] = useState("");
@@ -34,52 +70,178 @@ export default function BrowseRoomsScreen({ navigation }: any) {
 
   const [showFilters, setShowFilters] = useState(false);
 
+  /**
+   * Lấy danh sách phòng từ Firestore.
+   *
+   * rooms không còn cần field status.
+   */
   const {
-    data: roomList = [],
-    isLoading: loading,
-    isError,
+    data: rooms = [],
+    isLoading: loadingRooms,
+    isError: roomsError,
   } = useQuery({
     queryKey: ["rooms"],
     queryFn: getRooms,
   });
 
-  const availableCount = roomList.filter(
-    (room) => room.status === "available"
-  ).length;
+  /**
+   * Ngày hiện tại.
+   *
+   * Trạng thái phòng được tính dựa trên
+   * booking của ngày hôm nay.
+   */
+  const currentDate = getCurrentDate();
 
+  /**
+   * Lấy booking và tính trạng thái từng phòng.
+   *
+   * Nếu:
+   *
+   * startTime <= giờ hiện tại < endTime
+   *
+   * thì phòng đang được sử dụng.
+   *
+   * Nếu không có booking đang diễn ra
+   * thì phòng còn trống.
+   */
+  const {
+    data: roomList = [],
+    isLoading: loadingStatuses,
+    isError: statusError,
+  } = useQuery<RoomWithStatus[]>({
+    queryKey: [
+      "roomStatuses",
+      rooms.map((room) => room.id),
+      currentDate,
+    ],
+
+    queryFn: async () => {
+      const currentTime = getCurrentTime();
+
+      const results = await Promise.all(
+        rooms.map(async (room) => {
+          const bookings =
+            await getBookingsForRoomAndDate(
+              room.id,
+              currentDate
+            );
+
+          const isOccupied = bookings.some(
+            (booking) => {
+              return (
+                booking.startTime <= currentTime &&
+                booking.endTime > currentTime
+              );
+            }
+          );
+
+          return {
+            ...room,
+            status: isOccupied
+              ? "occupied"
+              : "available",
+          } as RoomWithStatus;
+        })
+      );
+
+      return results;
+    },
+
+    /**
+     * Chỉ chạy khi đã có danh sách phòng.
+     */
+    enabled: rooms.length > 0,
+
+    /**
+     * Kiểm tra lại trạng thái mỗi 1 phút.
+     */
+    refetchInterval: 60 * 1000,
+  });
+
+  const loading =
+    loadingRooms || loadingStatuses;
+
+  const isError =
+    roomsError || statusError;
+
+  /**
+   * Đếm số phòng hiện đang còn trống.
+   */
+  const availableCount =
+    roomList.filter(
+      (room) => room.status === "available"
+    ).length;
+
+  /**
+   * Lấy danh sách tòa nhà duy nhất.
+   */
   const buildings = useMemo(() => {
     const uniqueBuildings = Array.from(
-      new Set(roomList.map((room) => room.building))
+      new Set(
+        roomList.map(
+          (room) => room.building
+        )
+      )
     );
 
     return uniqueBuildings.sort();
   }, [roomList]);
 
+  /**
+   * Đếm số bộ lọc đang được sử dụng.
+   */
   const activeFilterCount =
     (statusFilter !== "all" ? 1 : 0) +
     (buildingFilter !== "all" ? 1 : 0) +
     (capacityFilter !== "all" ? 1 : 0);
 
+  /**
+   * Search + Filter phòng.
+   */
   const filteredRooms = useMemo(() => {
-    const keyword = search.trim().toLowerCase();
+    const keyword =
+      search.trim().toLowerCase();
 
     return roomList.filter((room) => {
+      /**
+       * Tìm kiếm theo:
+       * - Tên phòng
+       * - Tòa nhà
+       * - Tiện ích
+       */
       const matchesSearch =
         keyword.length === 0 ||
-        room.name.toLowerCase().includes(keyword) ||
-        room.building.toLowerCase().includes(keyword) ||
-        room.facilities.some((facility) =>
-          facility.toLowerCase().includes(keyword)
+        room.name
+          .toLowerCase()
+          .includes(keyword) ||
+        room.building
+          .toLowerCase()
+          .includes(keyword) ||
+        room.facilities.some(
+          (facility) =>
+            facility
+              .toLowerCase()
+              .includes(keyword)
         );
 
+      /**
+       * Lọc trạng thái.
+       */
       const matchesStatus =
         statusFilter === "all" ||
         room.status === statusFilter;
 
+      /**
+       * Lọc tòa nhà.
+       */
       const matchesBuilding =
         buildingFilter === "all" ||
-        room.building === buildingFilter;
+        room.building ===
+          buildingFilter;
 
+      /**
+       * Lọc sức chứa.
+       */
       const matchesCapacity = (() => {
         switch (capacityFilter) {
           case "small":
@@ -114,26 +276,45 @@ export default function BrowseRoomsScreen({ navigation }: any) {
     capacityFilter,
   ]);
 
+  /**
+   * Reset toàn bộ bộ lọc.
+   */
   const resetFilters = () => {
     setStatusFilter("all");
     setBuildingFilter("all");
     setCapacityFilter("all");
   };
 
-  const renderRoom = ({ item }: { item: Room }) => {
-    const isAvailable = item.status === "available";
+  /**
+   * Render từng phòng.
+   */
+  const renderRoom = ({
+    item,
+  }: {
+    item: RoomWithStatus;
+  }) => {
+    const isAvailable =
+      item.status === "available";
 
     return (
       <View style={styles.card}>
         {item.image ? (
           <Image
-            source={{ uri: item.image }}
+            source={{
+              uri: item.image,
+            }}
             style={styles.roomImage}
             resizeMode="cover"
           />
         ) : (
-          <View style={styles.imagePlaceholder}>
-            <Text style={styles.placeholderText}>
+          <View
+            style={styles.imagePlaceholder}
+          >
+            <Text
+              style={
+                styles.placeholderText
+              }
+            >
               Chưa có hình ảnh
             </Text>
           </View>
@@ -141,7 +322,9 @@ export default function BrowseRoomsScreen({ navigation }: any) {
 
         <View style={styles.cardContent}>
           <View style={styles.titleRow}>
-            <View style={styles.titleContainer}>
+            <View
+              style={styles.titleContainer}
+            >
               <Text
                 style={styles.roomName}
                 numberOfLines={1}
@@ -149,7 +332,9 @@ export default function BrowseRoomsScreen({ navigation }: any) {
                 {item.name}
               </Text>
 
-              <Text style={styles.building}>
+              <Text
+                style={styles.building}
+              >
                 Tòa nhà {item.building}
               </Text>
             </View>
@@ -178,11 +363,14 @@ export default function BrowseRoomsScreen({ navigation }: any) {
           </View>
 
           <View style={styles.infoRow}>
-            <Text style={styles.infoText}>
+            <Text
+              style={styles.infoText}
+            >
               👥 {item.capacity} chỗ
             </Text>
 
-            {item.facilities.length > 0 && (
+            {item.facilities.length >
+              0 && (
               <Text
                 style={styles.infoText}
                 numberOfLines={1}
@@ -198,12 +386,19 @@ export default function BrowseRoomsScreen({ navigation }: any) {
           <Pressable
             style={styles.viewButton}
             onPress={() =>
-              navigation.navigate("RoomDetail", {
-                roomId: item.id,
-              })
+              navigation.navigate(
+                "RoomDetail",
+                {
+                  roomId: item.id,
+                }
+              )
             }
           >
-            <Text style={styles.viewButtonText}>
+            <Text
+              style={
+                styles.viewButtonText
+              }
+            >
               Xem phòng
             </Text>
           </Pressable>
@@ -212,38 +407,55 @@ export default function BrowseRoomsScreen({ navigation }: any) {
     );
   };
 
+  /**
+   * Error.
+   */
   if (isError) {
     return (
       <SafeAreaView
         style={styles.container}
         edges={["top"]}
       >
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyTitle}>
+        <View
+          style={styles.emptyContainer}
+        >
+          <Text
+            style={styles.emptyTitle}
+          >
             Không thể tải danh sách phòng
           </Text>
 
-          <Text style={styles.emptyText}>
-            Vui lòng kiểm tra kết nối mạng và thử lại.
+          <Text
+            style={styles.emptyText}
+          >
+            Vui lòng kiểm tra kết nối mạng
+            và thử lại.
           </Text>
         </View>
       </SafeAreaView>
     );
   }
 
+  /**
+   * Loading.
+   */
   if (loading) {
     return (
       <SafeAreaView
         style={styles.container}
         edges={["top"]}
       >
-        <View style={styles.loadingContainer}>
+        <View
+          style={styles.loadingContainer}
+        >
           <ActivityIndicator
             size="large"
             color="#2563EB"
           />
 
-          <Text style={styles.loadingText}>
+          <Text
+            style={styles.loadingText}
+          >
             Đang tải danh sách phòng...
           </Text>
         </View>
@@ -258,40 +470,69 @@ export default function BrowseRoomsScreen({ navigation }: any) {
     >
       <FlatList
         data={filteredRooms}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) =>
+          item.id
+        }
         renderItem={renderRoom}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={
+          false
+        }
+        contentContainerStyle={
+          styles.listContent
+        }
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={
           <>
             {/* HEADER */}
             <View style={styles.header}>
-              <View style={styles.headerTextContainer}>
-                <Text style={styles.smallTitle}>
+              <View
+                style={
+                  styles.headerTextContainer
+                }
+              >
+                <Text
+                  style={styles.smallTitle}
+                >
                   PHÒNG HỌC
                 </Text>
 
-                <Text style={styles.headerTitle}>
+                <Text
+                  style={styles.headerTitle}
+                >
                   Tìm phòng học
                 </Text>
 
-                <Text style={styles.headerSubtitle}>
-                  Chọn phòng phù hợp và đặt thời gian học.
+                <Text
+                  style={
+                    styles.headerSubtitle
+                  }
+                >
+                  Chọn phòng phù hợp và đặt
+                  thời gian học.
                 </Text>
               </View>
 
               <View style={styles.logo}>
-                <Text style={styles.logoText}>
+                <Text
+                  style={styles.logoText}
+                >
                   SR
                 </Text>
               </View>
             </View>
 
             {/* SEARCH + FILTER BUTTON */}
-            <View style={styles.searchRow}>
-              <View style={styles.searchContainer}>
-                <Text style={styles.searchIcon}>
+            <View
+              style={styles.searchRow}
+            >
+              <View
+                style={
+                  styles.searchContainer
+                }
+              >
+                <Text
+                  style={styles.searchIcon}
+                >
                   ⌕
                 </Text>
 
@@ -305,10 +546,18 @@ export default function BrowseRoomsScreen({ navigation }: any) {
 
                 {search.length > 0 && (
                   <Pressable
-                    onPress={() => setSearch("")}
-                    style={styles.clearSearchButton}
+                    onPress={() =>
+                      setSearch("")
+                    }
+                    style={
+                      styles.clearSearchButton
+                    }
                   >
-                    <Text style={styles.clearSearchText}>
+                    <Text
+                      style={
+                        styles.clearSearchText
+                      }
+                    >
                       ×
                     </Text>
                   </Pressable>
@@ -322,7 +571,9 @@ export default function BrowseRoomsScreen({ navigation }: any) {
                     styles.filterButtonActive,
                 ]}
                 onPress={() =>
-                  setShowFilters((value) => !value)
+                  setShowFilters(
+                    (value) => !value
+                  )
                 }
               >
                 <Text
@@ -345,7 +596,8 @@ export default function BrowseRoomsScreen({ navigation }: any) {
                   Lọc
                 </Text>
 
-                {activeFilterCount > 0 && (
+                {activeFilterCount >
+                  0 && (
                   <View
                     style={[
                       styles.filterCount,
@@ -369,26 +621,46 @@ export default function BrowseRoomsScreen({ navigation }: any) {
 
             {/* COLLAPSIBLE FILTER */}
             {showFilters && (
-              <View style={styles.filterCard}>
-                <View style={styles.filterHeader}>
+              <View
+                style={styles.filterCard}
+              >
+                <View
+                  style={styles.filterHeader}
+                >
                   <View>
-                    <Text style={styles.filterHeaderTitle}>
+                    <Text
+                      style={
+                        styles.filterHeaderTitle
+                      }
+                    >
                       Bộ lọc phòng
                     </Text>
 
                     <Text
-                      style={styles.filterHeaderSubtitle}
+                      style={
+                        styles.filterHeaderSubtitle
+                      }
                     >
-                      Chọn điều kiện để tìm phòng phù hợp
+                      Chọn điều kiện để tìm
+                      phòng phù hợp
                     </Text>
                   </View>
 
-                  {activeFilterCount > 0 && (
+                  {activeFilterCount >
+                    0 && (
                     <Pressable
-                      onPress={resetFilters}
-                      style={styles.resetButton}
+                      onPress={
+                        resetFilters
+                      }
+                      style={
+                        styles.resetButton
+                      }
                     >
-                      <Text style={styles.resetButtonText}>
+                      <Text
+                        style={
+                          styles.resetButtonText
+                        }
+                      >
                         Đặt lại
                       </Text>
                     </Pressable>
@@ -396,32 +668,46 @@ export default function BrowseRoomsScreen({ navigation }: any) {
                 </View>
 
                 {/* STATUS */}
-                <View style={styles.filterSection}>
+                <View
+                  style={
+                    styles.filterSection
+                  }
+                >
                   <Text
-                    style={styles.filterSectionTitle}
+                    style={
+                      styles.filterSectionTitle
+                    }
                   >
                     Trạng thái
                   </Text>
 
                   <ScrollView
                     horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.chipRow}
+                    showsHorizontalScrollIndicator={
+                      false
+                    }
+                    contentContainerStyle={
+                      styles.chipRow
+                    }
                   >
                     <Pressable
                       style={[
                         styles.filterChip,
-                        statusFilter === "all" &&
+                        statusFilter ===
+                          "all" &&
                           styles.filterChipActive,
                       ]}
                       onPress={() =>
-                        setStatusFilter("all")
+                        setStatusFilter(
+                          "all"
+                        )
                       }
                     >
                       <Text
                         style={[
                           styles.filterText,
-                          statusFilter === "all" &&
+                          statusFilter ===
+                            "all" &&
                             styles.filterTextActive,
                         ]}
                       >
@@ -432,17 +718,21 @@ export default function BrowseRoomsScreen({ navigation }: any) {
                     <Pressable
                       style={[
                         styles.filterChip,
-                        statusFilter === "available" &&
+                        statusFilter ===
+                          "available" &&
                           styles.filterChipActive,
                       ]}
                       onPress={() =>
-                        setStatusFilter("available")
+                        setStatusFilter(
+                          "available"
+                        )
                       }
                     >
                       <Text
                         style={[
                           styles.filterText,
-                          statusFilter === "available" &&
+                          statusFilter ===
+                            "available" &&
                             styles.filterTextActive,
                         ]}
                       >
@@ -453,17 +743,21 @@ export default function BrowseRoomsScreen({ navigation }: any) {
                     <Pressable
                       style={[
                         styles.filterChip,
-                        statusFilter === "occupied" &&
+                        statusFilter ===
+                          "occupied" &&
                           styles.filterChipActive,
                       ]}
                       onPress={() =>
-                        setStatusFilter("occupied")
+                        setStatusFilter(
+                          "occupied"
+                        )
                       }
                     >
                       <Text
                         style={[
                           styles.filterText,
-                          statusFilter === "occupied" &&
+                          statusFilter ===
+                            "occupied" &&
                             styles.filterTextActive,
                         ]}
                       >
@@ -474,32 +768,46 @@ export default function BrowseRoomsScreen({ navigation }: any) {
                 </View>
 
                 {/* BUILDING */}
-                <View style={styles.filterSection}>
+                <View
+                  style={
+                    styles.filterSection
+                  }
+                >
                   <Text
-                    style={styles.filterSectionTitle}
+                    style={
+                      styles.filterSectionTitle
+                    }
                   >
                     Tòa nhà
                   </Text>
 
                   <ScrollView
                     horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.chipRow}
+                    showsHorizontalScrollIndicator={
+                      false
+                    }
+                    contentContainerStyle={
+                      styles.chipRow
+                    }
                   >
                     <Pressable
                       style={[
                         styles.filterChip,
-                        buildingFilter === "all" &&
+                        buildingFilter ===
+                          "all" &&
                           styles.filterChipActive,
                       ]}
                       onPress={() =>
-                        setBuildingFilter("all")
+                        setBuildingFilter(
+                          "all"
+                        )
                       }
                     >
                       <Text
                         style={[
                           styles.filterText,
-                          buildingFilter === "all" &&
+                          buildingFilter ===
+                            "all" &&
                             styles.filterTextActive,
                         ]}
                       >
@@ -507,31 +815,35 @@ export default function BrowseRoomsScreen({ navigation }: any) {
                       </Text>
                     </Pressable>
 
-                    {buildings.map((building) => (
-                      <Pressable
-                        key={building}
-                        style={[
-                          styles.filterChip,
-                          buildingFilter ===
-                            building &&
-                            styles.filterChipActive,
-                        ]}
-                        onPress={() =>
-                          setBuildingFilter(building)
-                        }
-                      >
-                        <Text
+                    {buildings.map(
+                      (building) => (
+                        <Pressable
+                          key={building}
                           style={[
-                            styles.filterText,
+                            styles.filterChip,
                             buildingFilter ===
                               building &&
-                              styles.filterTextActive,
+                              styles.filterChipActive,
                           ]}
+                          onPress={() =>
+                            setBuildingFilter(
+                              building
+                            )
+                          }
                         >
-                          {building}
-                        </Text>
-                      </Pressable>
-                    ))}
+                          <Text
+                            style={[
+                              styles.filterText,
+                              buildingFilter ===
+                                building &&
+                                styles.filterTextActive,
+                            ]}
+                          >
+                            {building}
+                          </Text>
+                        </Pressable>
+                      )
+                    )}
                   </ScrollView>
                 </View>
 
@@ -543,30 +855,40 @@ export default function BrowseRoomsScreen({ navigation }: any) {
                   ]}
                 >
                   <Text
-                    style={styles.filterSectionTitle}
+                    style={
+                      styles.filterSectionTitle
+                    }
                   >
                     Sức chứa
                   </Text>
 
                   <ScrollView
                     horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.chipRow}
+                    showsHorizontalScrollIndicator={
+                      false
+                    }
+                    contentContainerStyle={
+                      styles.chipRow
+                    }
                   >
                     <Pressable
                       style={[
                         styles.filterChip,
-                        capacityFilter === "all" &&
+                        capacityFilter ===
+                          "all" &&
                           styles.filterChipActive,
                       ]}
                       onPress={() =>
-                        setCapacityFilter("all")
+                        setCapacityFilter(
+                          "all"
+                        )
                       }
                     >
                       <Text
                         style={[
                           styles.filterText,
-                          capacityFilter === "all" &&
+                          capacityFilter ===
+                            "all" &&
                             styles.filterTextActive,
                         ]}
                       >
@@ -577,17 +899,21 @@ export default function BrowseRoomsScreen({ navigation }: any) {
                     <Pressable
                       style={[
                         styles.filterChip,
-                        capacityFilter === "small" &&
+                        capacityFilter ===
+                          "small" &&
                           styles.filterChipActive,
                       ]}
                       onPress={() =>
-                        setCapacityFilter("small")
+                        setCapacityFilter(
+                          "small"
+                        )
                       }
                     >
                       <Text
                         style={[
                           styles.filterText,
-                          capacityFilter === "small" &&
+                          capacityFilter ===
+                            "small" &&
                             styles.filterTextActive,
                         ]}
                       >
@@ -598,17 +924,21 @@ export default function BrowseRoomsScreen({ navigation }: any) {
                     <Pressable
                       style={[
                         styles.filterChip,
-                        capacityFilter === "medium" &&
+                        capacityFilter ===
+                          "medium" &&
                           styles.filterChipActive,
                       ]}
                       onPress={() =>
-                        setCapacityFilter("medium")
+                        setCapacityFilter(
+                          "medium"
+                        )
                       }
                     >
                       <Text
                         style={[
                           styles.filterText,
-                          capacityFilter === "medium" &&
+                          capacityFilter ===
+                            "medium" &&
                             styles.filterTextActive,
                         ]}
                       >
@@ -619,17 +949,21 @@ export default function BrowseRoomsScreen({ navigation }: any) {
                     <Pressable
                       style={[
                         styles.filterChip,
-                        capacityFilter === "large" &&
+                        capacityFilter ===
+                          "large" &&
                           styles.filterChipActive,
                       ]}
                       onPress={() =>
-                        setCapacityFilter("large")
+                        setCapacityFilter(
+                          "large"
+                        )
                       }
                     >
                       <Text
                         style={[
                           styles.filterText,
-                          capacityFilter === "large" &&
+                          capacityFilter ===
+                            "large" &&
                             styles.filterTextActive,
                         ]}
                       >
@@ -642,41 +976,68 @@ export default function BrowseRoomsScreen({ navigation }: any) {
             )}
 
             {/* SUMMARY */}
-            <View style={styles.summaryRow}>
+            <View
+              style={styles.summaryRow}
+            >
               <View>
-                <Text style={styles.sectionTitle}>
+                <Text
+                  style={styles.sectionTitle}
+                >
                   Phòng học
                 </Text>
 
-                <Text style={styles.sectionSubtitle}>
-                  {filteredRooms.length} phòng phù hợp
+                <Text
+                  style={
+                    styles.sectionSubtitle
+                  }
+                >
+                  {filteredRooms.length} phòng
+                  phù hợp
                 </Text>
               </View>
 
-              <View style={styles.availableSummary}>
-                <View style={styles.greenDot} />
+              <View
+                style={
+                  styles.availableSummary
+                }
+              >
+                <View
+                  style={styles.greenDot}
+                />
 
                 <Text
-                  style={styles.availableSummaryText}
+                  style={
+                    styles.availableSummaryText
+                  }
                 >
-                  {availableCount} phòng còn trống
+                  {availableCount} phòng còn
+                  trống
                 </Text>
               </View>
             </View>
           </>
         }
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>
+          <View
+            style={styles.emptyContainer}
+          >
+            <Text
+              style={styles.emptyIcon}
+            >
               ⌕
             </Text>
 
-            <Text style={styles.emptyTitle}>
+            <Text
+              style={styles.emptyTitle}
+            >
               Không tìm thấy phòng
             </Text>
 
-            <Text style={styles.emptyText}>
-              Hãy thử tìm kiếm hoặc thay đổi bộ lọc.
+            <Text
+              style={styles.emptyText}
+            >
+              Hãy thử tìm kiếm hoặc thay đổi
+              bộ lọc.
             </Text>
           </View>
         }
@@ -1151,4 +1512,3 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 });
-
